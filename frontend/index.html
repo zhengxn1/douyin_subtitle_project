@@ -1,0 +1,1399 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>视频字幕提取</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --primary: #6366f1;
+            --primary-light: #818cf8;
+            --primary-dark: #4f46e5;
+            --bg: #f1f5f9;
+            --surface: #ffffff;
+            --border: #e2e8f0;
+            --border-strong: #cbd5e1;
+            --text: #0f172a;
+            --text-secondary: #475569;
+            --text-muted: #94a3b8;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --radius: 12px;
+            --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+            --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+        }
+
+        body {
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            font-size: 14px;
+        }
+
+        /* ===== HEADER ===== */
+        .header {
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+            color: white;
+            padding: 1rem 2rem;
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 4px 20px rgba(79,70,229,0.3);
+        }
+        .header-logo {
+            font-size: 1.1rem;
+            font-weight: 700;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .header-search {
+            flex: 1;
+            display: flex;
+            gap: 8px;
+            max-width: 640px;
+        }
+        .header-search input {
+            flex: 1;
+            padding: 9px 16px;
+            border-radius: 40px;
+            border: none;
+            font-size: 0.88rem;
+            outline: none;
+            background: rgba(255,255,255,0.15);
+            color: white;
+            backdrop-filter: blur(4px);
+            transition: background 0.2s;
+        }
+        .header-search input::placeholder { color: rgba(255,255,255,0.65); }
+        .header-search input:focus { background: rgba(255,255,255,0.25); }
+        .header-search select {
+            padding: 9px 12px;
+            border-radius: 40px;
+            border: none;
+            font-size: 0.85rem;
+            background: rgba(255,255,255,0.15);
+            color: white;
+            cursor: pointer;
+            outline: none;
+        }
+        .header-search select option { color: #333; background: white; }
+        .header-search button {
+            padding: 9px 20px;
+            background: rgba(255,255,255,0.2);
+            border: 1.5px solid rgba(255,255,255,0.35);
+            border-radius: 40px;
+            color: white;
+            font-size: 0.85rem;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .header-search button:hover { background: rgba(255,255,255,0.3); }
+
+        /* ===== WORKSPACE ===== */
+        .workspace {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 1.5rem 2rem;
+        }
+
+        /* ===== INPUT PANEL ===== */
+        .input-panel {
+            background: var(--surface);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            padding: 1.2rem 1.5rem;
+            margin-bottom: 1.2rem;
+            border: 1px solid var(--border);
+        }
+        .input-row {
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+            flex-wrap: wrap;
+        }
+        .input-area {
+            flex: 1;
+            min-width: 300px;
+        }
+        .input-area textarea {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1.5px solid var(--border);
+            border-radius: 10px;
+            font-size: 0.88rem;
+            font-family: inherit;
+            resize: vertical;
+            min-height: 70px;
+            outline: none;
+            transition: border-color 0.2s;
+            line-height: 1.5;
+        }
+        .input-area textarea:focus { border-color: var(--primary-light); }
+        .input-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            align-items: flex-end;
+        }
+        .btn-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .btn-primary {
+            padding: 9px 22px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 40px;
+            font-size: 0.88rem;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn-primary:hover { background: var(--primary-dark); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(99,102,241,0.35); }
+        .btn-primary:active { transform: translateY(0); }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+        .btn-secondary {
+            padding: 9px 18px;
+            background: var(--surface);
+            color: var(--text-secondary);
+            border: 1.5px solid var(--border-strong);
+            border-radius: 40px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn-secondary:hover { border-color: var(--primary-light); color: var(--primary); background: #f0f4ff; }
+        .btn-export {
+            padding: 9px 18px;
+            background: #f0fdf4;
+            color: #15803d;
+            border: 1.5px solid #bbf7d0;
+            border-radius: 40px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn-export:hover { background: #dcfce7; border-color: #86efac; }
+        .char-limit-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+        .char-limit-row input[type=range] { width: 100px; cursor: pointer; accent-color: var(--primary); }
+        .char-limit-row span { font-weight: 600; color: var(--text-secondary); min-width: 2ch; }
+
+        .xhs-cookie-hint {
+            display: none;
+            margin-top: 10px;
+            padding: 10px 14px;
+            background: #fefce8;
+            border: 1.5px solid #fde047;
+            border-radius: 10px;
+            font-size: 0.8rem;
+            color: #713f12;
+        }
+        .xhs-cookie-hint.visible { display: block; }
+        .xhs-cookie-hint label { font-weight: 600; display: block; margin-bottom: 4px; }
+        .xhs-cookie-hint input {
+            width: 100%;
+            padding: 6px 10px;
+            border: 1px solid #ca8a04;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            background: white;
+        }
+
+        .status-row {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            margin-top: 8px;
+            font-size: 0.82rem;
+            min-height: 1.2rem;
+        }
+        .status-loading { color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
+        .status-error { color: var(--danger); font-weight: 500; }
+        .status-success { color: var(--success); font-weight: 500; }
+
+        /* ===== RESULTS TABLE ===== */
+        .results-panel {
+            background: var(--surface);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+            overflow: hidden;
+        }
+        .results-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.8rem 1.2rem;
+            border-bottom: 1px solid var(--border);
+            background: #f8fafc;
+        }
+        .results-title {
+            font-size: 0.88rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .results-count {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            font-weight: 400;
+        }
+        .results-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+            overflow-y: auto;
+            max-height: calc(100vh - 320px);
+        }
+        .table-wrapper::-webkit-scrollbar { width: 6px; height: 6px; }
+        .table-wrapper::-webkit-scrollbar-track { background: #f1f5f9; }
+        .table-wrapper::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.82rem;
+        }
+        thead {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background: #f1f5f9;
+        }
+        th {
+            padding: 10px 12px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            border-bottom: 2px solid var(--border);
+            white-space: nowrap;
+            cursor: pointer;
+            user-select: none;
+            transition: color 0.15s;
+        }
+        th:hover { color: var(--primary); }
+        th.col-num { text-align: center; width: 48px; }
+        th.col-platform { width: 80px; }
+        th.col-cover { width: 120px; }
+        th.col-title { min-width: 260px; }
+        th.col-author { width: 120px; }
+        th.col-stats { text-align: center; min-width: 100px; }
+        th.col-actions { width: 100px; text-align: center; }
+
+        tbody tr {
+            border-bottom: 1px solid #f1f5f9;
+            transition: background 0.12s;
+            cursor: pointer;
+        }
+        tbody tr:hover { background: #f8faff; }
+        tbody tr.selected { background: #eef2ff; }
+        tbody tr:last-child { border-bottom: none; }
+
+        td { padding: 10px 12px; vertical-align: middle; }
+        td.col-num { text-align: center; color: var(--text-muted); font-size: 0.75rem; }
+
+        /* Platform badge */
+        .platform-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+        .platform-badge.douyin { background: #fef2f2; color: #dc2626; }
+        .platform-badge.tiktok { background: #f0fdf4; color: #16a34a; }
+        .platform-badge.xiaohongshu { background: #fefce8; color: #d97706; }
+        .platform-badge.youtube { background: #fff7ed; color: #ea580c; }
+        .platform-badge.unknown { background: #f1f5f9; color: #64748b; }
+
+        /* Cover thumbnail */
+        .cover-thumb {
+            width: 100px;
+            height: 56px;
+            object-fit: cover;
+            border-radius: 6px;
+            background: #e2e8f0;
+            display: block;
+        }
+
+        /* Title cell */
+        .title-cell {
+            max-width: 320px;
+        }
+        .title-main {
+            font-weight: 500;
+            color: var(--text);
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            line-height: 1.4;
+            margin-bottom: 2px;
+        }
+        .title-link {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 300px;
+            display: block;
+        }
+
+        /* Author */
+        .author-cell {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .author-avatar {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: #e2e8f0;
+            object-fit: cover;
+            flex-shrink: 0;
+        }
+        .author-name {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 100px;
+        }
+
+        /* Stats */
+        .stats-cell { text-align: center; }
+        .stat-num {
+            display: block;
+            font-weight: 600;
+            font-size: 0.8rem;
+            color: var(--text);
+            line-height: 1.3;
+        }
+        .stat-label {
+            font-size: 0.68rem;
+            color: var(--text-muted);
+        }
+
+        /* Duration badge */
+        .duration-badge {
+            display: inline-block;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            font-size: 0.7rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* Status badges */
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            padding: 3px 8px;
+            border-radius: 20px;
+            font-size: 0.72rem;
+            font-weight: 600;
+        }
+        .status-badge.success { background: #d1fae5; color: #065f46; }
+        .status-badge.cached { background: #fef3c7; color: #92400e; }
+        .status-badge.failed { background: #fee2e2; color: #991b1b; }
+        .status-badge.pending { background: #f1f5f9; color: #64748b; }
+
+        /* Action buttons */
+        .action-btns { display: flex; gap: 6px; justify-content: center; }
+        .btn-action {
+            padding: 4px 10px;
+            border-radius: 6px;
+            border: 1px solid var(--border-strong);
+            background: white;
+            font-size: 0.75rem;
+            cursor: pointer;
+            color: var(--text-secondary);
+            font-weight: 500;
+            transition: all 0.15s;
+            white-space: nowrap;
+        }
+        .btn-action:hover { border-color: var(--primary-light); color: var(--primary); background: #f0f4ff; }
+        .btn-action.primary { background: var(--primary); color: white; border-color: var(--primary); }
+        .btn-action.primary:hover { background: var(--primary-dark); }
+
+        /* Table empty state */
+        .table-empty {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: var(--text-muted);
+        }
+        .table-empty-icon { font-size: 3rem; margin-bottom: 0.5rem; opacity: 0.5; }
+        .table-empty p { font-size: 0.88rem; line-height: 1.6; }
+        .table-empty .hint { font-size: 0.78rem; color: #94a3b8; margin-top: 4px; }
+
+        /* Loading spinner */
+        .spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid #cbd5e1;
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            vertical-align: middle;
+            margin-right: 4px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ===== DETAIL MODAL ===== */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(15,23,42,0.5);
+            backdrop-filter: blur(4px);
+            z-index: 200;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+        }
+        .modal-overlay.open { display: flex; }
+
+        .modal {
+            background: var(--surface);
+            border-radius: 16px;
+            width: 100%;
+            max-width: 960px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+            position: relative;
+        }
+        .modal::-webkit-scrollbar { width: 5px; }
+        .modal::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+
+        .modal-header {
+            padding: 1.2rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            background: var(--surface);
+            z-index: 5;
+        }
+        .modal-title {
+            font-size: 0.95rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1;
+            min-width: 0;
+        }
+        .modal-title-text {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .modal-close {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: none;
+            background: #f1f5f9;
+            cursor: pointer;
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
+            transition: all 0.15s;
+            flex-shrink: 0;
+        }
+        .modal-close:hover { background: #e2e8f0; color: var(--text); }
+
+        .modal-body { padding: 1.2rem 1.5rem; }
+
+        /* Modal stats bar */
+        .modal-stats-bar {
+            display: flex;
+            gap: 1px;
+            background: var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 1.2rem;
+            border: 1px solid var(--border);
+        }
+        .modal-stat-item {
+            flex: 1;
+            background: var(--surface);
+            padding: 10px 8px;
+            text-align: center;
+        }
+        .modal-stat-value {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--primary);
+            display: block;
+        }
+        .modal-stat-label {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            display: block;
+            margin-top: 2px;
+        }
+
+        /* Modal sections */
+        .modal-section {
+            margin-bottom: 1.2rem;
+        }
+        .modal-section-title {
+            font-size: 0.88rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 0.6rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .full-subtitle {
+            background: #f8fafc;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 0.8rem 1rem;
+            font-size: 0.88rem;
+            line-height: 1.8;
+            white-space: pre-wrap;
+            max-height: 240px;
+            overflow-y: auto;
+        }
+        .full-subtitle::-webkit-scrollbar { width: 3px; }
+        .full-subtitle::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
+
+        .modal-video {
+            width: 100%;
+            border-radius: 10px;
+            background: #000;
+            max-height: 360px;
+            display: block;
+        }
+
+        .subtitles-list {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+        }
+        .subtitles-list::-webkit-scrollbar { width: 3px; }
+        .subtitles-list::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
+        .sub-seg {
+            padding: 7px 12px;
+            border-bottom: 1px solid #f1f5f9;
+            cursor: pointer;
+            transition: background 0.12s;
+            border-left: 3px solid transparent;
+        }
+        .sub-seg:last-child { border-bottom: none; }
+        .sub-seg:hover { background: #f0f4ff; border-left-color: var(--primary-light); }
+        .sub-seg.active { background: #eef2ff; border-left-color: var(--primary); }
+        .sub-seg-time { font-size: 0.7rem; color: var(--text-muted); font-family: monospace; margin-bottom: 2px; }
+        .sub-seg-text { font-size: 0.85rem; line-height: 1.4; }
+
+        /* Comments section */
+        .comments-section { max-height: 300px; overflow-y: auto; }
+        .comments-section::-webkit-scrollbar { width: 3px; }
+        .comments-section::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
+        .comment-row {
+            padding: 10px 0;
+            border-bottom: 1px solid #f1f5f9;
+        }
+        .comment-row:last-child { border-bottom: none; }
+        .comment-top {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 4px;
+        }
+        .comment-avatar { width: 22px; height: 22px; border-radius: 50%; background: #e2e8f0; object-fit: cover; }
+        .comment-user { font-size: 0.8rem; font-weight: 600; flex: 1; }
+        .comment-time { font-size: 0.72rem; color: var(--text-muted); }
+        .comment-like { font-size: 0.72rem; color: var(--text-muted); }
+        .comment-text { font-size: 0.85rem; line-height: 1.5; color: var(--text); }
+
+        /* Analysis slot */
+        .analysis-slot {
+            background: linear-gradient(135deg, #f8fafc, #f0f4ff);
+            border: 2px dashed #c7d2fe;
+            border-radius: 12px;
+            padding: 1.2rem;
+            text-align: center;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        .analysis-slot-icon { font-size: 1.8rem; flex-shrink: 0; }
+        .analysis-slot h3 { font-size: 0.88rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 2px; }
+        .analysis-slot p { font-size: 0.78rem; }
+
+        .btn-copy {
+            padding: 5px 14px;
+            background: #f1f5f9;
+            border: 1px solid var(--border-strong);
+            border-radius: 20px;
+            font-size: 0.78rem;
+            cursor: pointer;
+            color: var(--text-secondary);
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .btn-copy:hover { background: #e2e8f0; }
+        .btn-copy.copied { background: #d1fae5; border-color: var(--success); color: #065f46; }
+
+        /* Responsive */
+        @media (max-width: 900px) {
+            .workspace { padding: 1rem; }
+            .header { padding: 0.8rem 1rem; }
+            .col-author, .col-stats { display: none; }
+        }
+        @media (max-width: 600px) {
+            .header-search { flex-direction: column; max-width: 100%; }
+            .workspace { padding: 0.75rem; }
+            .input-row { flex-direction: column; }
+            .input-actions { align-items: flex-start; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+    <div class="header-logo">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>
+        视频字幕提取
+    </div>
+    <div class="header-search">
+        <input type="text" id="headerSearchInput" placeholder="输入关键词搜索视频（回车）" />
+        <select id="headerSearchPlatform">
+            <option value="auto">全部平台</option>
+            <option value="douyin">抖音</option>
+            <option value="xiaohongshu">小红书</option>
+        </select>
+        <button onclick="doHeaderSearch()">🔍 搜索</button>
+    </div>
+</div>
+
+<!-- WORKSPACE -->
+<div class="workspace">
+
+    <!-- INPUT PANEL -->
+    <div class="input-panel">
+        <div class="input-row">
+            <div class="input-area">
+                <textarea id="linkTextarea"
+                    placeholder="🔗 粘贴视频分享链接（支持抖音/小红书/TikTok/YouTube），每行一个链接..."></textarea>
+                <div class="xhs-cookie-hint" id="xhsCookieHint">
+                    <label>📕 小红书需要登录 Cookie（粘贴浏览器中的 Cookie 字符串）：</label>
+                    <input type="text" id="xhsCookieInput" placeholder="a1=xxx; web_session=xxx; webId=xxx..." />
+                </div>
+            </div>
+            <div class="input-actions">
+                <div class="btn-row">
+                    <button class="btn-primary" id="parseBtn" onclick="doParseLinks()">▶ 查询</button>
+                    <button class="btn-export" id="exportBtn" onclick="exportTable()" style="display:none">📊 导出Excel</button>
+                    <button class="btn-secondary" onclick="clearResults()">🗑️ 清空</button>
+                </div>
+                <div class="char-limit-row">
+                    <span>字幕分段字数上限：</span>
+                    <input type="range" id="charLimitSlider" min="30" max="200" value="100"
+                        oninput="document.getElementById('charLimitDisplay').innerText=this.value" />
+                    <span id="charLimitDisplay">100</span>
+                    <span>字</span>
+                </div>
+            </div>
+        </div>
+        <div class="status-row">
+            <div class="status-loading" id="statusLoading"></div>
+            <div class="status-error" id="statusError"></div>
+            <div class="status-success" id="statusSuccess"></div>
+        </div>
+    </div>
+
+    <!-- RESULTS TABLE -->
+    <div class="results-panel">
+        <div class="results-header">
+            <div class="results-title">
+                📋 视频列表
+                <span class="results-count" id="resultsCount"></span>
+            </div>
+            <div class="results-actions">
+                <button class="btn-export" id="exportBtn2" onclick="exportTable()" style="display:none;padding:6px 14px;font-size:0.8rem">📊 导出Excel</button>
+            </div>
+        </div>
+
+        <div class="table-wrapper">
+            <table id="resultsTable">
+                <thead>
+                    <tr>
+                        <th class="col-num">#</th>
+                        <th class="col-platform">平台</th>
+                        <th class="col-cover">封面</th>
+                        <th class="col-title">标题 / 链接</th>
+                        <th class="col-author">作者</th>
+                        <th class="col-stats">▶ 播放</th>
+                        <th class="col-stats">👍 点赞</th>
+                        <th class="col-stats">💬 评论</th>
+                        <th class="col-stats">⭐ 收藏</th>
+                        <th class="col-stats">↗️ 转发</th>
+                        <th class="col-actions">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="resultsBody">
+                    <tr>
+                        <td colspan="11">
+                            <div class="table-empty">
+                                <div class="table-empty-icon">📹</div>
+                                <p>输入关键词搜索，或粘贴视频链接<br><span class="hint">支持抖音 / 小红书 / TikTok / YouTube</span></p>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- DETAIL MODAL -->
+<div class="modal-overlay" id="detailModal" onclick="if(event.target===this)closeDetail()">
+    <div class="modal" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <div class="modal-title" id="modalTitle">
+                <span id="modalTitleText"></span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+                <span class="platform-badge" id="modalPlatformBadge"></span>
+                <button class="modal-close" onclick="closeDetail()">✕</button>
+            </div>
+        </div>
+        <div class="modal-body">
+
+            <!-- Stats bar -->
+            <div class="modal-stats-bar" id="modalStatsBar">
+                <div class="modal-stat-item"><span class="modal-stat-value" id="msPlay">-</span><span class="modal-stat-label">播放</span></div>
+                <div class="modal-stat-item"><span class="modal-stat-value" id="msLike">-</span><span class="modal-stat-label">点赞</span></div>
+                <div class="modal-stat-item"><span class="modal-stat-value" id="msComment">-</span><span class="modal-stat-label">评论</span></div>
+                <div class="modal-stat-item"><span class="modal-stat-value" id="msCollect">-</span><span class="modal-stat-label">收藏</span></div>
+                <div class="modal-stat-item"><span class="modal-stat-value" id="msShare">-</span><span class="modal-stat-label">转发</span></div>
+                <div class="modal-stat-item"><span class="modal-stat-value" id="msDuration">-</span><span class="modal-stat-label">时长</span></div>
+            </div>
+
+            <!-- Module 1: Full subtitle -->
+            <div class="modal-section">
+                <div class="modal-section-title">📝 完整字幕 <button class="btn-copy" id="copyBtn" onclick="copySubtitle(this)">📋 复制全文</button></div>
+                <div class="full-subtitle" id="modalFullSubtitle">正在加载字幕...</div>
+            </div>
+
+            <!-- Module 2: Video + Subtitles -->
+            <div class="modal-section">
+                <div class="modal-section-title">🎬 视频播放</div>
+                <video id="modalVideoPlayer" class="modal-video" controls></video>
+                <div class="subtitles-list" id="modalSubtitles" style="margin-top:10px"></div>
+            </div>
+
+            <!-- Module 4: Comments -->
+            <div class="modal-section">
+                <div class="modal-section-title">💬 评论 <span id="modalCommentsCount"></span></div>
+                <div class="comments-section" id="modalComments"></div>
+            </div>
+
+            <!-- Module 5: Analysis slot -->
+            <div class="modal-section">
+                <div class="analysis-slot">
+                    <div class="analysis-slot-icon">🧠</div>
+                    <div>
+                        <h3>评论区智能分析</h3>
+                        <p>自动找出高价值评论、情感倾向、热门话题 — 即将上线</p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<script>
+/* =====================================================================
+   STATE
+===================================================================== */
+let allResults = [];      // 所有结果（搜索+解析）
+let selectedIdx = -1;
+let segments = [];
+let punctuatedText = '';
+let charTimeMap = [];
+let subtitlesDragging = false;
+let lastAutoScrollIdx = -1;
+let commentsPage = 1;
+
+/* =====================================================================
+   HEADER SEARCH
+===================================================================== */
+document.getElementById('headerSearchInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doHeaderSearch();
+});
+
+function doHeaderSearch() {
+    const kw = document.getElementById('headerSearchInput').value.trim();
+    if (!kw) return;
+    const platform = document.getElementById('headerSearchPlatform').value;
+    setStatus('loading', `<span class="spinner"></span>搜索 "${kw}" 中...`);
+    fetch('/api/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyword: kw, platform, page: 1, page_size: 20 }),
+    }).then(r => r.json()).then(data => {
+        if (data.error) { setStatus('error', '搜索失败：' + data.error); return; }
+        allResults = (data.results || []).map(r => ({ ...r, _status: 'pending' }));
+        renderTable();
+        const n = allResults.length;
+        setStatus('success', `✅ 找到 ${n} 个结果`);
+        document.getElementById('exportBtn').style.display = n ? 'inline-flex' : 'none';
+        document.getElementById('exportBtn2').style.display = n ? 'inline-flex' : 'none';
+    }).catch(err => setStatus('error', '搜索出错：' + err.message));
+}
+
+/* =====================================================================
+   PARSE LINKS
+===================================================================== */
+document.getElementById('linkTextarea').addEventListener('input', () => {
+    const hasXhs = extractAllLinks(document.getElementById('linkTextarea').value)
+        .some(u => { try { return new URL(u).hostname.includes('xiaohongshu.com'); } catch { return false; } });
+    document.getElementById('xhsCookieHint').classList.toggle('visible', hasXhs);
+});
+document.getElementById('linkTextarea').addEventListener('keydown', e => {
+    if (e.ctrlKey && e.key === 'Enter') doParseLinks();
+});
+
+async function doParseLinks() {
+    const raw = document.getElementById('linkTextarea').value.trim();
+    if (!raw) { setStatus('error', '请输入分享链接'); return; }
+    const links = extractAllLinks(raw);
+    if (!links.length) { setStatus('error', '未检测到有效链接'); return; }
+
+    const btn = document.getElementById('parseBtn');
+    btn.disabled = true;
+    setStatus('loading', `<span class="spinner"></span>正在查询 ${links.length} 个链接（仅元数据，无字幕）...`);
+    setStatus('error', '');
+    setStatus('success', '');
+
+    try {
+        const resp = await fetch('/api/quick_parse', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                links,
+                platform: 'auto',
+                xhs_cookie: document.getElementById('xhsCookieInput').value.trim() || null,
+            }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || '请求失败');
+
+        allResults = (data.results || []).map(r => {
+            const s = r.stats || {};
+            return {
+                video_id: r.video_id || '',
+                platform: r.platform || 'unknown',
+                title: r.title || '未知标题',
+                author: r.author || null,
+                author_avatar: r.author_avatar || null,
+                cover_url: r.cover_url || null,
+                video_url: null,
+                share_url: r.share_url || '',
+                stats: {
+                    play_count:    s.play_count    || 0,
+                    like_count:    s.like_count    || 0,
+                    comment_count: s.comment_count || 0,
+                    collect_count: s.collect_count || 0,
+                    share_count:   s.share_count   || 0,
+                },
+                duration: r.duration || null,
+                duration_formatted: _fmtDur(r.duration),
+                _status: r.download_status === 'failed' ? 'failed' : 'success',
+                _error: r.error || null,
+                asr_done: false,
+            };
+        });
+
+        renderTable();
+        const ok = allResults.filter(r => r._status === 'success').length;
+        setStatus('success', `✅ 成功 ${ok} / ${allResults.length}（点「生成字幕」提取文案）`);
+        document.getElementById('exportBtn').style.display = allResults.length ? 'inline-flex' : 'none';
+        document.getElementById('exportBtn2').style.display = allResults.length ? 'inline-flex' : 'none';
+    } catch (err) {
+        setStatus('error', '查询出错：' + err.message);
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+function _fmtDur(seconds) {
+    if (!seconds) return null;
+    const m = Math.floor(seconds / 60), s = seconds % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function clearResults() {
+    allResults = [];
+    selectedIdx = -1;
+    renderTable();
+    document.getElementById('exportBtn').style.display = 'none';
+    document.getElementById('exportBtn2').style.display = 'none';
+    setStatus('loading', '');
+    setStatus('error', '');
+    setStatus('success', '');
+}
+
+function setStatus(type, msg) {
+    document.getElementById('statusLoading').innerHTML = type === 'loading' ? msg : '';
+    document.getElementById('statusError').textContent = type === 'error' ? msg : '';
+    document.getElementById('statusSuccess').textContent = type === 'success' ? msg : '';
+}
+
+/* =====================================================================
+   RENDER TABLE
+===================================================================== */
+function renderTable() {
+    const tbody = document.getElementById('resultsBody');
+    document.getElementById('resultsCount').textContent = allResults.length
+        ? `（${allResults.length} 条）` : '';
+
+    if (!allResults.length) {
+        tbody.innerHTML = `<tr><td colspan="11">
+            <div class="table-empty">
+                <div class="table-empty-icon">📹</div>
+                <p>输入关键词搜索，或粘贴视频链接<br><span class="hint">支持抖音 / 小红书 / TikTok / YouTube</span></p>
+            </div>
+        </td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = allResults.map((r, idx) => {
+        const badge = platformBadge(r.platform);
+        const cover = r.cover_url
+            ? `<img class="cover-thumb" src="${escAttr(r.cover_url)}" loading="lazy" onerror="this.style.display='none'" />`
+            : `<div class="cover-thumb" style="display:flex;align-items:center;justify-content:center;font-size:1.2rem;color:#94a3b8">▶</div>`;
+        const dur = r.duration_formatted ? `<span class="duration-badge">${r.duration_formatted}</span>` : '';
+        const status = r._status ? statusBadge(r._status) : '';
+        const s = r.stats || {};
+        const authorAvatar = r.author_avatar
+            ? `<img class="author-avatar" src="${escAttr(r.author_avatar)}" onerror="this.style.display='none'" />`
+            : '';
+        const shareUrl = r.share_url || '';
+
+        return `<tr class="${idx === selectedIdx ? 'selected' : ''}" onclick="openDetail(${idx})">
+            <td class="col-num">${idx + 1}</td>
+            <td>${badge}</td>
+            <td><div style="position:relative;display:inline-block">${cover}${dur}</div></td>
+            <td class="title-cell">
+                <div class="title-main">${escHtml(r.title || '无标题')}</div>
+                ${shareUrl ? `<a class="title-link" href="${escAttr(shareUrl)}" target="_blank" onclick="event.stopPropagation()">${escHtml(shareUrl)}</a>` : ''}
+                ${r._error ? `<div style="font-size:0.72rem;color:#ef4444;margin-top:2px">⚠ ${escHtml(r._error.slice(0,60))}</div>` : ''}
+            </td>
+            <td>
+                <div class="author-cell">
+                    ${authorAvatar}
+                    <span class="author-name">${escHtml(r.author || '-')}</span>
+                </div>
+            </td>
+            <td class="stats-cell"><span class="stat-num">${fmtNum(s.play_count)}</span><span class="stat-label">播放</span></td>
+            <td class="stats-cell"><span class="stat-num">${fmtNum(s.like_count)}</span><span class="stat-label">点赞</span></td>
+            <td class="stats-cell"><span class="stat-num">${fmtNum(s.comment_count)}</span><span class="stat-label">评论</span></td>
+            <td class="stats-cell"><span class="stat-num">${fmtNum(s.collect_count)}</span><span class="stat-label">收藏</span></td>
+            <td class="stats-cell"><span class="stat-num">${fmtNum(s.share_count)}</span><span class="stat-label">转发</span></td>
+            <td>
+                <div class="action-btns">
+                    ${r._status === 'success' || r.video_url
+                        ? `<button class="btn-action primary" onclick="event.stopPropagation();openDetail(${idx})">详情</button>`
+                        : `<button class="btn-action" onclick="event.stopPropagation();openDetail(${idx})">详情</button>`}
+                </div>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+/* =====================================================================
+   OPEN DETAIL
+===================================================================== */
+async function openDetail(idx) {
+    selectedIdx = idx;
+    renderTable();
+
+    const r = allResults[idx];
+    const modal = document.getElementById('detailModal');
+    modal.classList.add('open');
+
+    // ── 立即用列表已有数据渲染（无需等待） ──
+    const s = r.stats || {};
+    document.getElementById('modalTitleText').textContent = r.title || '无标题';
+    const pb = document.getElementById('modalPlatformBadge');
+    pb.className = `platform-badge ${r.platform}`;
+    pb.textContent = { douyin:'抖音', tiktok:'TikTok', xiaohongshu:'小红书', youtube:'YouTube', unknown:'未知' }[r.platform] || r.platform;
+    document.getElementById('msPlay').textContent = fmtNum(s.play_count);
+    document.getElementById('msLike').textContent = fmtNum(s.like_count);
+    document.getElementById('msComment').textContent = fmtNum(s.comment_count);
+    document.getElementById('msCollect').textContent = fmtNum(s.collect_count);
+    document.getElementById('msShare').textContent = fmtNum(s.share_count);
+    document.getElementById('msDuration').textContent = r.duration_formatted || '-';
+
+    // 视频区域：列表已有 video_url 则直接播放
+    const vp = document.getElementById('modalVideoPlayer');
+    vp.src = r.video_url || '';
+    vp.load();
+
+    // 字幕区域：初始占位（列表数据没有字幕）
+    document.getElementById('modalFullSubtitle').textContent = '（点击下方「生成字幕」按钮提取字幕，预计 1-2 分钟）';
+    document.getElementById('modalSubtitles').innerHTML = `
+        <div style="text-align:center;padding:1.2rem;color:var(--text-muted);font-size:0.85rem">
+            <div style="margin-bottom:8px">🎙️ 暂无字幕</div>
+            <button class="btn-primary" id="runAsrBtn" onclick="runAsr('${idx}')"
+                style="font-size:0.82rem;padding:6px 16px">▶ 生成字幕</button>
+        </div>`;
+
+    // 评论区域
+    document.getElementById('modalCommentsCount').textContent = '';
+    document.getElementById('modalComments').innerHTML = `
+        <div style="color:var(--text-muted);font-size:0.85rem;text-align:center;padding:1rem">
+            💬 评论功能开发中
+        </div>`;
+
+    // 记录当前数据（无 ASR）
+    allResults[idx] = { ...r, asr_done: false };
+}
+
+/* =====================================================================
+   RUN ASR：点击「生成字幕」按钮，触发完整解析流程
+===================================================================== */
+async function runAsr(idx) {
+    const r = allResults[idx];
+    const btn = document.getElementById('runAsrBtn');
+    if (!btn) return;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>生成中（1-2分钟）...';
+
+    document.getElementById('modalFullSubtitle').textContent = '正在下载视频并转写，请稍候...';
+
+    try {
+        const resp = await fetch('/api/video_detail', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                video_id: r.video_id,
+                platform: r.platform,
+                share_url: r.share_url,
+                run_asr: true,
+            }),
+        });
+        const d = await resp.json();
+        if (!resp.ok) throw new Error(d.error || '生成失败');
+
+        // 字幕结果
+        punctuatedText = d.punctuated_text || d.full_text || '';
+        segments = d.segments || [];
+        buildCharTimeMap(segments, punctuatedText);
+
+        const subEl = document.getElementById('modalFullSubtitle');
+        subEl.textContent = punctuatedText || '（未检测到语音内容）';
+
+        // 分段字幕
+        renderModalSubtitles();
+        setupVideoTimeupdate();
+
+        // 视频播放器
+        const vp = document.getElementById('modalVideoPlayer');
+        if (d.video_url) {
+            vp.src = d.video_url;
+            vp.load();
+        }
+
+        allResults[idx] = { ...r, ...d, asr_done: true };
+
+    } catch (err) {
+        document.getElementById('modalFullSubtitle').textContent = '生成失败：' + err.message;
+    }
+}
+
+function closeDetail() {
+    document.getElementById('detailModal').classList.remove('open');
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDetail(); });
+
+/* =====================================================================
+   RENDER MODAL SUBTITLES
+===================================================================== */
+function renderModalSubtitles() {
+    const limit = parseInt(document.getElementById('charLimitSlider')?.value || 100);
+    const segs = reSegmentByCharLimit(punctuatedText, limit);
+    const container = document.getElementById('modalSubtitles');
+    if (!segs.length) {
+        container.innerHTML = '<div style="color:var(--text-muted);font-size:0.82rem;text-align:center;padding:0.8rem">暂无字幕</div>';
+        return;
+    }
+    container.innerHTML = segs.map((seg, i) => `
+        <div class="sub-seg" data-start="${seg.start}" onclick="seekModalVideo(${seg.start}, this)">
+            <div class="sub-seg-time">⏱ ${fmtTime(seg.start)} → ${fmtTime(seg.end)}</div>
+            <div class="sub-seg-text">${escHtml(seg.text)}</div>
+        </div>
+    `).join('');
+}
+
+function seekModalVideo(start, el) {
+    const vp = document.getElementById('modalVideoPlayer');
+    const container = document.getElementById('modalSubtitles');
+    vp.currentTime = start;
+    vp.play();
+    container.querySelectorAll('.sub-seg').forEach(e => e.classList.remove('active'));
+    el.classList.add('active');
+}
+
+/* =====================================================================
+   RENDER MODAL COMMENTS
+===================================================================== */
+function renderModalComments(comments) {
+    const container = document.getElementById('modalComments');
+    container.innerHTML = comments.map(c => `
+        <div class="comment-row">
+            <div class="comment-top">
+                ${c.avatar ? `<img class="comment-avatar" src="${escAttr(c.avatar)}" />` : ''}
+                <span class="comment-user">${escHtml(c.user || '匿名')}</span>
+                <span class="comment-time">${c.timestamp || ''}</span>
+                <span class="comment-like">👍 ${fmtNum(c.like_count)}</span>
+            </div>
+            <div class="comment-text">${escHtml(c.content || '')}</div>
+        </div>
+    `).join('');
+}
+
+/* =====================================================================
+   COPY SUBTITLE
+===================================================================== */
+function copySubtitle(btn) {
+    const text = document.getElementById('modalFullSubtitle')?.innerText || punctuatedText;
+    navigator.clipboard.writeText(text).then(() => {
+        btn.innerText = '✅ 已复制';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.innerText = '📋 复制全文'; btn.classList.remove('copied'); }, 2000);
+    });
+}
+
+/* =====================================================================
+   VIDEO TIME UPDATE
+===================================================================== */
+document.getElementById('modalVideoPlayer')?.addEventListener('timeupdate', function() {
+    if (subtitlesDragging) return;
+    const t = this.currentTime;
+    const limit = parseInt(document.getElementById('charLimitSlider')?.value || 100);
+    const segs = reSegmentByCharLimit(punctuatedText, limit);
+    const container = document.getElementById('modalSubtitles');
+    let active = null;
+    segs.forEach((seg, i) => {
+        if (t >= seg.start && t <= seg.end) {
+            active = i;
+        }
+    });
+    if (active !== null && active !== lastAutoScrollIdx) {
+        lastAutoScrollIdx = active;
+        container.querySelectorAll('.sub-seg').forEach((el, i) => {
+            el.classList.toggle('active', i === active);
+        });
+        container.children[active]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+});
+document.getElementById('modalSubtitles')?.addEventListener('mousedown', () => { subtitlesDragging = true; lastAutoScrollIdx = -1; });
+document.getElementById('modalSubtitles')?.addEventListener('touchstart', () => { subtitlesDragging = true; lastAutoScrollIdx = -1; }, { passive: true });
+document.getElementById('modalSubtitles')?.addEventListener('mouseleave', () => { subtitlesDragging = false; });
+
+/* =====================================================================
+   CHAR LIMIT SLIDER
+===================================================================== */
+document.getElementById('charLimitSlider')?.addEventListener('input', function() {
+    document.getElementById('charLimitDisplay').innerText = this.value;
+    if (punctuatedText && charTimeMap.length) renderModalSubtitles();
+});
+
+/* =====================================================================
+   SUBTITLE LOGIC
+===================================================================== */
+function buildCharTimeMap(whisperSegs, puncText) {
+    if (!whisperSegs?.length) { charTimeMap = []; return; }
+    const rawMap = [];
+    for (const seg of whisperSegs) {
+        const dur = seg.end - seg.start;
+        for (let i = 0; i < seg.text.length; i++) {
+            rawMap.push(seg.start + (i / Math.max(seg.text.length, 1)) * dur);
+        }
+    }
+    if (!rawMap.length) rawMap.push(0);
+    charTimeMap = [];
+    let ri = 0;
+    for (let i = 0; i < puncText.length; i++) {
+        if (/[。！？，、；：""''（）【】《》…—]/.test(puncText[i])) {
+            charTimeMap.push(ri > 0 ? rawMap[Math.min(ri - 1, rawMap.length - 1)] : 0);
+        } else {
+            charTimeMap.push(ri < rawMap.length ? rawMap[ri++] : rawMap[rawMap.length - 1] || 0);
+        }
+    }
+}
+
+function reSegmentByCharLimit(text, limit) {
+    if (!text || !charTimeMap.length) return [];
+    const result = [];
+    let pos = 0;
+    while (pos < text.length) {
+        let best = -1;
+        const end = Math.min(pos + limit, text.length);
+        for (let i = end - 1; i >= pos; i--) {
+            if (/[。！？]/.test(text[i])) { best = i + 1; break; }
+        }
+        if (best === -1) best = end;
+        const chunk = text.slice(pos, best).trim();
+        if (chunk) {
+            result.push({
+                start: Math.round(charTimeMap[Math.min(pos, charTimeMap.length - 1)] * 100) / 100,
+                end: Math.round(charTimeMap[Math.min(best - 1, charTimeMap.length - 1)] * 100) / 100,
+                text: chunk,
+            });
+        }
+        pos = best;
+    }
+    return result;
+}
+
+/* =====================================================================
+   EXCEL EXPORT (CSV → .xlsx)
+===================================================================== */
+function exportTable() {
+    if (!allResults.length) return;
+
+    const headers = ['序号', '平台', '标题', '作者', '链接', '播放', '点赞', '评论', '收藏', '转发', '时长', '状态'];
+    const rows = allResults.map((r, i) => [
+        i + 1,
+        { douyin:'抖音', tiktok:'TikTok', xiaohongshu:'小红书', youtube:'YouTube', unknown:'未知' }[r.platform] || r.platform,
+        (r.title || r.original_desc || '').replace(/"/g, '""'),
+        r.author || '',
+        r.share_url || '',
+        Number(r.stats?.play_count) || 0,
+        Number(r.stats?.like_count) || 0,
+        Number(r.stats?.comment_count) || 0,
+        Number(r.stats?.collect_count) || 0,
+        Number(r.stats?.share_count) || 0,
+        r.duration_formatted || '',
+        { success: '成功', cached: '缓存', failed: '失败', pending: '待解析' }[r._status] || '',
+    ]);
+
+    // BOM for Excel UTF-8
+    let csv = '\uFEFF' + headers.map(h => `"${h}"`).join(',') + '\n';
+    csv += rows.map(row => row.map(cell => {
+        const s = String(cell ?? '');
+        return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+    }).join(',')).join('\n');
+
+    const blob = new Blob([csv], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `视频字幕_${new Date().toISOString().slice(0,10)}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+/* =====================================================================
+   UTILITIES
+===================================================================== */
+const VIDEO_DOMAINS = ['douyin.com','amemv.com','tiktok.com','xhslink.com','xiaohongshu.com','youtu.be','youtube.com'];
+function extractAllLinks(text) {
+    const re = /https?:\/\/[^\s"'<>[\]{}|\\^`]+/gi;
+    const found = new Set();
+    for (const m of text.matchAll(re)) {
+        try {
+            const host = new URL(m[0]).hostname.toLowerCase();
+            if (VIDEO_DOMAINS.some(d => host.includes(d))) found.add(m[0]);
+        } catch (_) {}
+    }
+    return Array.from(found);
+}
+
+function escHtml(s) { return String(s ?? '').replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[m]); }
+function escAttr(s) { return String(s ?? '').replace(/"/g, '&quot;'); }
+
+function fmtNum(n) {
+    n = Number(n) || 0;
+    if (n >= 1e8) return (n/1e8).toFixed(1) + '亿';
+    if (n >= 1e4) return (n/1e4).toFixed(1) + '万';
+    return n ? n.toLocaleString() : '-';
+}
+
+function fmtTime(s) {
+    const m = Math.floor(s/60), sec = Math.floor(s%60);
+    return `${m}:${sec.toString().padStart(2,'0')}`;
+}
+
+function platformBadge(p) {
+    const names = { douyin:'抖音', tiktok:'TikTok', xiaohongshu:'小红书', youtube:'YouTube', unknown:'未知' };
+    return `<span class="platform-badge ${p}">${names[p] || p}</span>`;
+}
+
+function statusBadge(s) {
+    const map = { success:'✅ 成功', cached:'♻️ 缓存', failed:'❌ 失败', pending:'⏳ 待解析' };
+    return `<span class="status-badge ${s}">${map[s] || s}</span>`;
+}
+</script>
+</body>
+</html>
